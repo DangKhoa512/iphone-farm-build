@@ -1,0 +1,10 @@
+pc-tool/dist/
+pc-tool/build/
+pc-tool/__pycache__/
+pc-tool/ui/__pycache__/
+release/
+build/output/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db

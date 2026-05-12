@@ -1,118 +1,110 @@
-# Script tu dong chay sau khi reboot -- dung 1 lan
-# Duoc dat lich boi setup_wsl_theos.ps1
+# Chay tu dong sau reboot de hoan tat: Ubuntu -> Theos -> build DEB
+
+. "$PSScriptRoot\_common.ps1"
+Add-Type -AssemblyName System.Windows.Forms
 
 $LogFile = "$env:TEMP\iphone-farm-setup.log"
-function Log { param($m) $t = Get-Date -Format "HH:mm:ss"; "$t $m" | Tee-Object -FilePath $LogFile -Append | Write-Host }
-
-Log "=== iPhone Farm -- Tiep tuc cai dat sau reboot ==="
-
-# ---------------------------------------------------------------------------
-# Dat WSL2 la mac dinh
-# ---------------------------------------------------------------------------
-Log "[1] Dat WSL2 default version..."
-wsl --set-default-version 2
-Log "    OK"
-
-# ---------------------------------------------------------------------------
-# Cai Ubuntu 22.04
-# ---------------------------------------------------------------------------
-Log "[2] Cai Ubuntu 22.04 (co the mat 5-10 phut)..."
-wsl --install -d Ubuntu-22.04 --no-launch
-if ($LASTEXITCODE -ne 0) {
-    Log "[!] wsl --install that bai, thu cach khac..."
-    # Thu qua wsl store
-    wsl --install -d Ubuntu --no-launch
+function Log {
+    param($msg)
+    $line = "$(Get-Date -Format 'HH:mm:ss') $msg"
+    $line | Add-Content -Path $LogFile
+    Write-Host $line
 }
-Log "    Ubuntu da cai xong"
 
-# Cho Ubuntu khoi dong lan dau
-Log "[3] Khoi dong Ubuntu lan dau de setup user..."
-$ubuntuSetup = @'
-#!/usr/bin/env bash
-# Tao user mac dinh khong can tuong tac (cho automation)
-echo "root:farm2024" | chpasswd 2>/dev/null || true
-echo "Ubuntu setup done"
-'@
-$tmpInit = "$env:TEMP\ubuntu_init.sh"
-$ubuntuSetup | Set-Content -Path $tmpInit -Encoding UTF8 -NoNewline
-$wslPath = wsl wslpath -u ($tmpInit -replace "\\", "/")
-wsl -d Ubuntu-22.04 bash $wslPath 2>$null
-Log "    Ubuntu ready"
+Log "=== iPhone Farm: Tiep tuc sau reboot ==="
 
 # ---------------------------------------------------------------------------
-# Cai Theos
+wsl --set-default-version 2 *>$null
+if ($LASTEXITCODE -ne 0) { Log "[!] WSL2 set-default that bai, dung WSL1" }
+
 # ---------------------------------------------------------------------------
-Log "[4] Cai Theos trong Ubuntu WSL..."
+$distList = (wsl --list --quiet 2>$null | Out-String) -replace "`0", ""
+if ($distList -notmatch "Ubuntu") {
+    Log "[ERR] Ubuntu chua duoc cai. Chay lai 1_setup_wsl_theos.ps1"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Ubuntu chua duoc cai.`nVui long chay lai build\1_setup_wsl_theos.ps1",
+        "Loi", "OK", "Error")
+    exit 1
+}
+Log "Ubuntu OK"
+
+# ---------------------------------------------------------------------------
+# Ghi wsl.conf de Ubuntu dung root mac dinh (khong can sudo vi da la -u root)
+$cfgScript = 'printf "[user]\ndefault=root\n" > /etc/wsl.conf && echo DONE'
+$cfgOut = wsl -d Ubuntu -u root bash -c $cfgScript 2>$null
+if ($cfgOut -notmatch "DONE") { Log "[!] Khong ghi duoc /etc/wsl.conf" }
+
+$testOut = wsl -d Ubuntu -u root bash -c "echo WSLTEST" 2>$null
+if ($testOut -notmatch "WSLTEST") {
+    Log "[ERR] Khong the chay bash trong Ubuntu"
+    [System.Windows.Forms.MessageBox]::Show("Khong the chay Ubuntu. Xem log: $LogFile", "Loi", "OK", "Error")
+    exit 1
+}
+Log "Ubuntu bash OK"
+
+# ---------------------------------------------------------------------------
+Log "Cai Theos (co the mat 10-20 phut)..."
 
 $theosScript = @'
 #!/usr/bin/env bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
-
-echo "=== Cap nhat apt ==="
-sudo apt-get update -qq 2>&1 | tail -2
-
-echo "=== Cai packages ==="
-sudo apt-get install -y -qq \
+apt-get update -qq 2>&1 | tail -1
+apt-get install -y -qq \
     curl git make clang ca-certificates \
     libplist-utils zip unzip xz-utils bzip2 \
-    python3 rsync fakeroot dpkg-dev 2>&1 | tail -5
-
-echo "=== Cai Theos ==="
-if [ ! -d "$HOME/theos" ]; then
-    export THEOS="$HOME/theos"
+    python3 rsync fakeroot dpkg-dev 2>&1 | tail -3
+export THEOS=/opt/theos
+if [ ! -d "$THEOS" ]; then
     bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
-else
-    echo "Theos da co"
 fi
-
-# Set env
-grep -q "THEOS" "$HOME/.bashrc" 2>/dev/null || {
-    echo 'export THEOS=$HOME/theos' >> "$HOME/.bashrc"
-    echo 'export PATH=$THEOS/bin:$PATH' >> "$HOME/.bashrc"
-}
-
+echo 'export THEOS=/opt/theos' > /etc/profile.d/theos.sh
+echo 'export PATH=$THEOS/bin:$PATH' >> /etc/profile.d/theos.sh
+chmod +x /etc/profile.d/theos.sh
 echo "THEOS_SETUP_DONE"
 '@
 
 $tmpTheos = "$env:TEMP\install_theos.sh"
-$theosScript -replace "`r`n", "`n" | Set-Content -Path $tmpTheos -Encoding UTF8 -NoNewline
-$theosWSL = wsl wslpath -u ($tmpTheos -replace "\\", "/")
-wsl -d Ubuntu-22.04 bash $theosWSL
+($theosScript -replace "`r`n", "`n") | Set-Content -Path $tmpTheos -Encoding UTF8 -NoNewline
+$theosWSL = Convert-ToWSLPath $tmpTheos
+wsl -d Ubuntu -u root bash $theosWSL
+Remove-Item -Path $tmpTheos -ErrorAction SilentlyContinue
 
-if ($LASTEXITCODE -eq 0) {
-    Log "    Theos cai xong!"
-} else {
-    Log "[ERR] Theos that bai"
+if ($LASTEXITCODE -ne 0) {
+    Log "[ERR] Cai Theos that bai"
+    [System.Windows.Forms.MessageBox]::Show("Cai Theos that bai. Xem log: $LogFile", "Loi", "OK", "Error")
     exit 1
 }
+Log "Theos OK"
 
 # ---------------------------------------------------------------------------
-# Build DEB
-# ---------------------------------------------------------------------------
-Log "[5] Build DEB..."
+Log "Build DEB..."
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
-$IosDeb      = Join-Path $ProjectRoot "ios-deb"
-$BuildSh     = Join-Path $ScriptDir "build_inside_wsl.sh"
+$OutputDir   = Join-Path $ScriptDir "output"
+New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$IosDeb_WSL  = wsl wslpath -u ($IosDeb  -replace "\\", "/")
-$BuildSh_WSL = wsl wslpath -u ($BuildSh -replace "\\", "/")
-wsl -d Ubuntu-22.04 chmod +x $BuildSh_WSL
+$IosDeb_WSL  = Convert-ToWSLPath (Join-Path $ProjectRoot "ios-deb")
+$BuildSh_WSL = Convert-ToWSLPath (Join-Path $ScriptDir "build_inside_wsl.sh")
 
-wsl -d Ubuntu-22.04 bash $BuildSh_WSL $IosDeb_WSL
+wsl -d Ubuntu -u root bash -c "chmod +x $BuildSh_WSL && bash $BuildSh_WSL $IosDeb_WSL"
 
 if ($LASTEXITCODE -eq 0) {
-    Log "=== BUILD THANH CONG! ==="
-    $OutputDir = Join-Path $ScriptDir "output"
-    Start-Process explorer.exe $OutputDir
-    [System.Windows.Forms.MessageBox]::Show(
-        "iPhone Farm DEB da build xong!`nFile .deb trong:`n$OutputDir",
-        "Build Thanh Cong", "OK", "Information")
+    $deb = Show-BuildResult $OutputDir
+    if ($deb) {
+        Log "=== BUILD THANH CONG: $($deb.Name) ==="
+        [System.Windows.Forms.MessageBox]::Show(
+            "BUILD THANH CONG!`n`nFile: $($deb.Name)`nThu muc: $OutputDir`n`nCai len iPhone bang Filza hoac chay 3_install_to_iphone.ps1",
+            "iPhone Farm DEB", "OK", "Information")
+    } else {
+        Log "[ERR] Build OK nhung khong tim thay .deb trong $OutputDir"
+        [System.Windows.Forms.MessageBox]::Show("Build OK nhung khong co .deb output. Xem log: $LogFile", "Loi", "OK", "Error")
+    }
 } else {
     Log "[ERR] Build that bai"
+    [System.Windows.Forms.MessageBox]::Show("Build that bai. Xem log: $LogFile", "Loi", "OK", "Error")
 }
 
-# Xoa task sau khi chay
 Unregister-ScheduledTask -TaskName "iPhoneFarmSetup" -Confirm:$false -ErrorAction SilentlyContinue
+Log "=== Hoan tat ==="
