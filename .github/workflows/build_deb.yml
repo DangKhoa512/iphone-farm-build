@@ -29,14 +29,14 @@ jobs:
             python3 rsync fakeroot dpkg-dev
 
       - name: Install Theos
+        env:
+          THEOS: /opt/theos
         run: |
-          bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-          echo "$HOME/theos/bin"  >> $GITHUB_PATH
-
-      - name: Download iOS SDKs
-        run: |
-          git clone --depth=1 https://github.com/theos/sdks $HOME/theos/sdks
+          echo "THEOS=/opt/theos" >> $GITHUB_ENV
+          echo "/opt/theos/bin"   >> $GITHUB_PATH
+          sudo git clone --depth=1 https://github.com/theos/theos /opt/theos
+          sudo git clone --depth=1 https://github.com/theos/sdks  /opt/theos/sdks
+          sudo chmod -R 777 /opt/theos
 
       - name: Build DEB
         working-directory: ios-deb
