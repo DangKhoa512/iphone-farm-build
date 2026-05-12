@@ -26,7 +26,10 @@ jobs:
           sudo apt-get install -y -qq \
             curl git make clang ca-certificates \
             libplist-utils zip unzip xz-utils bzip2 \
-            python3 rsync fakeroot dpkg-dev
+            python3 rsync fakeroot dpkg-dev libxml2 libssl-dev
+          sudo curl -fsSL https://raw.githubusercontent.com/theos/dm.pl/master/dm.pl \
+            -o /usr/local/bin/dm.pl
+          sudo chmod +x /usr/local/bin/dm.pl
 
       - name: Install Theos
         run: |
