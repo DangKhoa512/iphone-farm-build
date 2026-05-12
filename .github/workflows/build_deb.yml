@@ -1,0 +1,51 @@
+# =============================================================================
+# GitHub Actions — build DEB tự động (không cần cài gì trên Windows)
+# Cách dùng:
+#   1. Push repo lên GitHub
+#   2. Actions → "Build iPhone DEB" → Run workflow
+#   3. Tải .deb từ Artifacts
+# =============================================================================
+
+name: Build iPhone DEB
+
+on:
+  push:
+    paths: [ "ios-deb/**" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            curl git make clang ca-certificates \
+            libplist-utils zip unzip xz-utils bzip2 \
+            python3 rsync fakeroot dpkg-dev
+
+      - name: Install Theos
+        run: |
+          bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          echo "$HOME/theos/bin"  >> $GITHUB_PATH
+
+      - name: Download iOS SDKs
+        run: |
+          git clone --depth=1 https://github.com/theos/sdks $HOME/theos/sdks
+
+      - name: Build DEB
+        working-directory: ios-deb
+        run: |
+          make package FINALPACKAGE=1
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-farm-deb
+          path: ios-deb/packages/*.deb
+          retention-days: 30

@@ -1,0 +1,12 @@
+Package: com.iphone-farm.server
+Name: iPhone Farm Screen Server
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: High-performance MJPEG/WebSocket screen streaming daemon for iPhone farms.
+             Streams screen over WiFi/USB on port 7777.
+             API: /stream (MJPEG), /screenshot (JPEG), /info (JSON)
+Maintainer: Farm Tool
+Author: Farm Tool
+Section: Utilities
+Priority: optional
+Depends: firmware (>= 14.0)

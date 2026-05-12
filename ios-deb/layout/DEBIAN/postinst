@@ -1,0 +1,4 @@
+#!/bin/sh
+launchctl unload /Library/LaunchDaemons/com.iphone-farm.server.plist 2>/dev/null
+launchctl load /Library/LaunchDaemons/com.iphone-farm.server.plist
+echo "[iphone-farm] Server started on port 7777"
